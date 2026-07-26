@@ -1,0 +1,14 @@
+{
+  "name": "line-bot-notion",
+  "version": "1.0.0",
+  "description": "居家安全達人 LINE Bot with Notion Integration",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "@line/bot-sdk": "^9.0.0",
+    "@notionhq/client": "^2.2.14"
+  }
+}
