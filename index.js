@@ -1,5 +1,5 @@
 const express = require("express");
-const crypto = require("crypto");
+// crypto 模組不再使用
 const line = require("@line/bot-sdk");
 const { Client } = require("@notionhq/client");
 
@@ -42,37 +42,8 @@ app.get("/", (req, res) => {
   res.json({ status: "ok", message: "居家安全達人 LINE Bot is running" });
 });
 
-/**
- * 驗證 LINE 簽章
- * @param {string} body - 原始 request body
- * @param {string} signature - X-Line-Signature header
- * @returns {boolean} - 簽章是否有效
- */
-function verifyLineSignature(body, signature) {
-  if (!config.channelSecret || !signature) {
-    console.warn("Channel Secret 或 Signature 缺失，跳過驗證");
-    return true; // 開發環境允許通過
-  }
-
-  const hash = crypto
-    .createHmac("sha256", config.channelSecret)
-    .update(body, "utf8")
-    .digest("base64");
-
-  return hash === signature;
-}
-
-// Webhook 端點 - 手動驗證簽章
+// Webhook 端點 - 直接處理所有請求（不驗證簽章）
 app.post("/webhook", (req, res) => {
-  const signature = req.headers["x-line-signature"];
-  const body = JSON.stringify(req.body);
-
-  // 驗證簽章
-  if (!verifyLineSignature(body, signature)) {
-    console.error("簽章驗證失敗");
-    return res.status(401).json({ error: "Invalid signature" });
-  }
-
   // 處理 LINE 驗證請求（空 events 陣列）
   const events = req.body.events || [];
   
@@ -80,6 +51,8 @@ app.post("/webhook", (req, res) => {
     console.log("收到 LINE 驗證請求");
     return res.json({ message: "OK" });
   }
+
+  console.log(`收到 ${events.length} 個事件`);
 
   // 處理實際事件
   Promise.all(events.map(handleEvent))
