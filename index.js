@@ -1,5 +1,4 @@
 const express = require("express");
-// crypto 模組不再使用
 const line = require("@line/bot-sdk");
 const { Client } = require("@notionhq/client");
 
@@ -31,6 +30,65 @@ const client = new line.messagingApi.MessagingApiClient({
 
 // 用戶角色映射
 const userRoles = {};
+
+// 角色配置與顏色
+const roleConfig = {
+  "管理者": {
+    emoji: "🔐",
+    color: "#FF6B6B",
+    buttons: [
+      { label: "新增產品", command: "新增產品" },
+      { label: "新增供應商", command: "新增供應商" },
+      { label: "查詢產品", command: "查詢產品" },
+      { label: "查詢供應商", command: "查詢供應商" }
+    ]
+  },
+  "評估": {
+    emoji: "📋",
+    color: "#4ECDC4",
+    buttons: [
+      { label: "新增客戶", command: "新增客戶" },
+      { label: "新增案件", command: "新增案件" },
+      { label: "查詢客戶", command: "查詢客戶" },
+      { label: "查詢案件", command: "查詢案件" }
+    ]
+  },
+  "報價": {
+    emoji: "💰",
+    color: "#95E1D3",
+    buttons: [
+      { label: "新增報價", command: "新增報價" },
+      { label: "查詢報價", command: "查詢報價" }
+    ]
+  },
+  "派工": {
+    emoji: "🔧",
+    color: "#F38181",
+    buttons: [
+      { label: "新增派工", command: "新增派工" },
+      { label: "查詢派工", command: "查詢派工" },
+      { label: "更新狀態", command: "更新狀態" }
+    ]
+  },
+  "施工": {
+    emoji: "🏗️",
+    color: "#AA96DA",
+    buttons: [
+      { label: "回報進度", command: "回報進度" },
+      { label: "完工回報", command: "完工回報" },
+      { label: "查詢任務", command: "查詢任務" }
+    ]
+  },
+  "財務": {
+    emoji: "📊",
+    color: "#FCBAD3",
+    buttons: [
+      { label: "確認收款", command: "確認收款" },
+      { label: "查詢帳務", command: "查詢帳務" },
+      { label: "帳期提醒", command: "帳期提醒" }
+    ]
+  }
+};
 
 const app = express();
 
@@ -66,6 +124,100 @@ app.post("/webhook", (req, res) => {
     });
 });
 
+/**
+ * 生成角色選單 Flex Message
+ * @param {string} role - 角色名稱
+ * @returns {object} - Flex Message 物件
+ */
+function createRoleMenuFlexMessage(role) {
+  const config = roleConfig[role];
+  if (!config) return null;
+
+  // 每行最多 2 個按鈕
+  const buttonRows = [];
+  for (let i = 0; i < config.buttons.length; i += 2) {
+    const row = {
+      type: "box",
+      layout: "horizontal",
+      spacing: "sm",
+      contents: []
+    };
+
+    // 第一個按鈕
+    row.contents.push({
+      type: "button",
+      style: "primary",
+      color: config.color,
+      action: {
+        type: "message",
+        label: config.buttons[i].label,
+        text: config.buttons[i].command
+      },
+      flex: 1
+    });
+
+    // 第二個按鈕（如果存在）
+    if (i + 1 < config.buttons.length) {
+      row.contents.push({
+        type: "button",
+        style: "primary",
+        color: config.color,
+        action: {
+          type: "message",
+          label: config.buttons[i + 1].label,
+          text: config.buttons[i + 1].command
+        },
+        flex: 1
+      });
+    }
+
+    buttonRows.push(row);
+  }
+
+  return {
+    type: "flex",
+    altText: `${role}角色選單`,
+    contents: {
+      type: "bubble",
+      header: {
+        type: "box",
+        layout: "vertical",
+        backgroundColor: config.color,
+        contents: [
+          {
+            type: "text",
+            text: `${config.emoji} ${role}`,
+            size: "xl",
+            weight: "bold",
+            color: "#ffffff",
+            align: "center"
+          }
+        ]
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        spacing: "md",
+        contents: buttonRows
+      },
+      footer: {
+        type: "box",
+        layout: "vertical",
+        spacing: "sm",
+        contents: [
+          {
+            type: "text",
+            text: "點擊上方按鈕以執行指令",
+            size: "xs",
+            color: "#999999",
+            align: "center"
+          }
+        ]
+      }
+    }
+  };
+}
+
 // 主要事件處理
 async function handleEvent(event) {
   if (event.type !== "message" || event.message.type !== "text") {
@@ -78,28 +230,32 @@ async function handleEvent(event) {
 
   console.log(`用戶 ${userId} 的訊息: ${messageText}`);
 
-  let replyMessage = { type: "text", text: "" };
+  let replyMessages = [];
 
   // 角色切換指令
   if (["管理者", "評估", "報價", "派工", "施工", "財務"].includes(messageText)) {
     userRoles[userId] = messageText;
-    replyMessage.text = `已切換至【${messageText}】模式。\n\n${getRoleHelp(messageText)}`;
+    const flexMessage = createRoleMenuFlexMessage(messageText);
+    if (flexMessage) {
+      replyMessages.push(flexMessage);
+    }
   } else if (messageText === "幫助" || messageText === "help") {
-    replyMessage.text = getMainHelp();
+    replyMessages.push({ type: "text", text: getMainHelp() });
   } else if (messageText === "目前角色") {
     const role = userRoles[userId] || "未設定";
-    replyMessage.text = `您目前的角色是：【${role}】\n\n輸入角色名稱可切換：管理者、評估、報價、派工、施工、財務`;
+    replyMessages.push({ type: "text", text: `您目前的角色是：【${role}】\n\n輸入角色名稱可切換：管理者、評估、報價、派工、施工、財務` });
   } else {
     // 根據角色處理指令
     const role = userRoles[userId];
     if (!role) {
-      replyMessage.text = "請先選擇角色！\n\n可用角色：\n• 管理者\n• 評估\n• 報價\n• 派工\n• 施工\n• 財務\n\n輸入角色名稱即可切換。";
+      replyMessages.push({ type: "text", text: "請先選擇角色！\n\n可用角色：\n• 管理者\n• 評估\n• 報價\n• 派工\n• 施工\n• 財務\n\n輸入角色名稱即可切換。" });
     } else {
-      replyMessage.text = await handleRoleCommand(role, messageText, userId);
+      const responseText = await handleRoleCommand(role, messageText, userId);
+      replyMessages.push({ type: "text", text: responseText });
     }
   }
 
-  return client.replyMessage({ replyToken, messages: [replyMessage] });
+  return client.replyMessage({ replyToken, messages: replyMessages });
 }
 
 // 主選單幫助
